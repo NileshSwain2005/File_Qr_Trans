@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="description"
+        content="YUKTI QRStream - Offline optical file sharing"
+    >
+
+    <title>YUKTI QRStream</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+    <!-- QR Generator -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        defer
+    ></script>
+
+    <script
+        src="app.js"
+        defer
+    ></script>
+</head>
+
+<body>
+
+    <!-- =====================================================
+         BACKGROUND
+    ====================================================== -->
+
+    <div class="background-glow glow-one"></div>
+    <div class="background-glow glow-two"></div>
+
+
+    <!-- =====================================================
+         NAVBAR
+    ====================================================== -->
+
+    <header class="navbar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                ◈
+            </div>
+
+            <div>
+                <div class="brand-name">
+                    YUKTI
+                </div>
+
+                <div class="brand-product">
+                    QRStream
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="connection-status">
+
+            <span
+                class="status-dot"
+                id="statusDot"
+            ></span>
+
+            <span id="statusText">
+                Ready
+            </span>
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         HERO
+    ====================================================== -->
+
+    <main>
+
+        <section class="hero">
+
+            <div class="hero-badge">
+                <span>●</span>
+                OFFLINE OPTICAL TRANSFER
+            </div>
+
+            <h1>
+                Share files through
+                <span>light.</span>
+            </h1>
+
+            <p>
+                Transfer photos, videos, audio and documents
+                using continuously changing QR frames.
+            </p>
+
+        </section>
+
+
+        <!-- =================================================
+             MODE SWITCH
+        ================================================== -->
+
+        <section class="mode-switch">
+
+            <button
+                class="mode-button active"
+                id="sendModeButton"
+            >
+                <span>↑</span>
+                Send
+            </button>
+
+            <button
+                class="mode-button"
+                id="receiveModeButton"
+            >
+                <span>⌁</span>
+                Receive
+            </button>
+
+        </section>
+
+
+        <!-- =================================================
+             SEND PANEL
+        ================================================== -->
+
+        <section
+            class="panel"
+            id="sendPanel"
+        >
+
+            <div class="panel-header">
+
+                <div>
+
+                    <div class="eyebrow">
+                        TRANSMITTER
+                    </div>
+
+                    <h2>
+                        Send a file
+                    </h2>
+
+                    <p>
+                        Choose a file and turn your screen
+                        into an optical transmitter.
+                    </p>
+
+                </div>
+
+                <div class="panel-icon">
+                    ↑
+                </div>
+
+            </div>
+
+
+            <!-- FILE DROP -->
+
+            <div
+                class="drop-zone"
+                id="dropZone"
+            >
+
+                <input
+                    type="file"
+                    id="fileInput"
+                    hidden
+                >
+
+                <div class="upload-icon">
+                    ↑
+                </div>
+
+                <h3>
+                    Drop your file here
+                </h3>
+
+                <p>
+                    or choose a file from your device
+                </p>
+
+                <button
+                    class="secondary-button"
+                    id="chooseFileButton"
+                >
+                    Choose File
+                </button>
+
+                <div class="supported">
+                    Photos · Videos · Audio · PDF · ZIP · Documents
+                </div>
+
+            </div>
+
+
+            <!-- FILE INFO -->
+
+            <div
+                class="file-card hidden"
+                id="senderFileCard"
+            >
+
+                <div class="file-preview">
+                    <span id="fileTypeIcon">
+                        FILE
+                    </span>
+                </div>
+
+                <div class="file-details">
+
+                    <h3 id="senderFileName">
+                        file.jpg
+                    </h3>
+
+                    <div class="file-meta">
+
+                        <span id="senderFileSize">
+                            0 KB
+                        </span>
+
+                        <span>•</span>
+
+                        <span id="senderFileType">
+                            image/jpeg
+                        </span>
+
+                    </div>
+
+                </div>
+
+                <button
+                    class="remove-button"
+                    id="removeFileButton"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <!-- SEND CONFIG -->
+
+            <div
+                class="config-grid hidden"
+                id="senderConfig"
+            >
+
+                <div class="config-card">
+
+                    <span class="config-label">
+                        CHUNK SIZE
+                    </span>
+
+                    <strong>
+                        850 bytes
+                    </strong>
+
+                    <small>
+                        Camera-friendly QR payload
+                    </small>
+
+                </div>
+
+                <div class="config-card">
+
+                    <span class="config-label">
+                        ENCODING
+                    </span>
+
+                    <strong>
+                        Base64
+                    </strong>
+
+                    <small>
+                        Binary-safe transfer
+                    </small>
+
+                </div>
+
+                <div class="config-card">
+
+                    <span class="config-label">
+                        INTEGRITY
+                    </span>
+
+                    <strong>
+                        SHA-256
+                    </strong>
+
+                    <small>
+                        File verification
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <!-- START BUTTON -->
+
+            <button
+                class="primary-button hidden"
+                id="startSendButton"
+            >
+                Start QR Stream
+                <span>→</span>
+            </button>
+
+
+            <!-- SENDER STREAM -->
+
+            <div
+                class="stream-section hidden"
+                id="senderStream"
+            >
+
+                <div class="stream-top">
+
+                    <div>
+
+                        <div class="eyebrow">
+                            LIVE TRANSMISSION
+                        </div>
+
+                        <h2>
+                            Show this QR to receiver
+                        </h2>
+
+                    </div>
+
+                    <div
+                        class="live-badge"
+                    >
+                        <span></span>
+                        LIVE
+                    </div>
+
+                </div>
+
+
+                <div class="qr-stage">
+
+                    <div
+                        class="qr-frame"
+                        id="qrContainer"
+                    ></div>
+
+                    <div class="scan-corner corner-tl"></div>
+                    <div class="scan-corner corner-tr"></div>
+                    <div class="scan-corner corner-bl"></div>
+                    <div class="scan-corner corner-br"></div>
+
+                </div>
+
+
+                <div class="frame-info">
+
+                    <div>
+
+                        <span>
+                            FRAME
+                        </span>
+
+                        <strong id="currentFrame">
+                            0 / 0
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            PROGRESS
+                        </span>
+
+                        <strong id="senderProgressText">
+                            0%
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            SPEED
+                        </span>
+
+                        <strong>
+                            4 FPS
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div class="progress-bar">
+
+                    <div
+                        id="senderProgress"
+                        class="progress-fill"
+                    ></div>
+
+                </div>
+
+
+                <div class="stream-controls">
+
+                    <button
+                        class="secondary-button"
+                        id="pauseSendButton"
+                    >
+                        Pause
+                    </button>
+
+                    <button
+                        class="danger-button"
+                        id="stopSendButton"
+                    >
+                        Stop
+                    </button>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             RECEIVE PANEL
+        ================================================== -->
+
+        <section
+            class="panel hidden"
+            id="receivePanel"
+        >
+
+            <div class="panel-header">
+
+                <div>
+
+                    <div class="eyebrow">
+                        RECEIVER
+                    </div>
+
+                    <h2>
+                        Receive a file
+                    </h2>
+
+                    <p>
+                        Point your camera toward the sender's
+                        changing QR code.
+                    </p>
+
+                </div>
+
+                <div class="panel-icon">
+                    ↓
+                </div>
+
+            </div>
+
+
+            <!-- CAMERA -->
+
+            <div class="camera-wrapper">
+
+                <video
+                    id="cameraVideo"
+                    autoplay
+                    muted
+                    playsinline
+                ></video>
+
+                <canvas
+                    id="cameraCanvas"
+                    hidden
+                ></canvas>
+
+                <div class="camera-overlay">
+
+                    <div class="camera-corner tl"></div>
+                    <div class="camera-corner tr"></div>
+                    <div class="camera-corner bl"></div>
+                    <div class="camera-corner br"></div>
+
+                    <div class="camera-line"></div>
+
+                </div>
+
+                <div
+                    class="camera-message"
+                    id="cameraMessage"
+                >
+                    Camera inactive
+                </div>
+
+            </div>
+
+
+            <button
+                class="primary-button"
+                id="startCameraButton"
+            >
+                Start Camera
+                <span>⌁</span>
+            </button>
+
+
+            <!-- RECEIVER STATUS -->
+
+            <div
+                class="receive-status hidden"
+                id="receiveStatus"
+            >
+
+                <div class="receive-file">
+
+                    <div class="receive-file-icon">
+                        ↓
+                    </div>
+
+                    <div>
+
+                        <span>
+                            RECEIVING
+                        </span>
+
+                        <strong id="receiverFileName">
+                            file
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div class="receive-progress">
+
+                    <div class="progress-header">
+
+                        <span>
+                            Frames received
+                        </span>
+
+                        <strong id="receiverFrameText">
+                            0 / 0
+                        </strong>
+
+                    </div>
+
+                    <div class="progress-bar">
+
+                        <div
+                            class="progress-fill"
+                            id="receiverProgress"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="receiver-stats">
+
+                    <div>
+
+                        <span>
+                            RECEIVED
+                        </span>
+
+                        <strong id="receiverBytes">
+                            0 KB
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            MISSING
+                        </span>
+
+                        <strong id="missingFrames">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            STATUS
+                        </span>
+
+                        <strong id="receiverState">
+                            Scanning
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- COMPLETION -->
+
+            <div
+                class="completion hidden"
+                id="completionBox"
+            >
+
+                <div class="completion-icon">
+                    ✓
+                </div>
+
+                <h2>
+                    Transfer complete
+                </h2>
+
+                <p id="completionText">
+                    Your file has been reconstructed
+                    and verified.
+                </p>
+
+                <div class="hash-status">
+                    <span>✓</span>
+                    SHA-256 verified
+                </div>
+
+                <a
+                    class="download-button"
+                    id="downloadButton"
+                    href="#"
+                >
+                    Download File
+                    <span>↓</span>
+                </a>
+
+                <button
+                    class="secondary-button"
+                    id="newReceiveButton"
+                >
+                    Receive Another File
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             FEATURES
+        ================================================== -->
+
+        <section class="features">
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    ◉
+                </div>
+
+                <div>
+
+                    <strong>
+                        No Bluetooth
+                    </strong>
+
+                    <p>
+                        Data travels through visible QR frames.
+                    </p>
+
+                </div>
+
+            </div>
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    ◇
+                </div>
+
+                <div>
+
+                    <strong>
+                        No hotspot
+                    </strong>
+
+                    <p>
+                        The optical channel carries the payload.
+                    </p>
+
+                </div>
+
+            </div>
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    ✓
+                </div>
+
+                <div>
+
+                    <strong>
+                        Verified transfer
+                    </strong>
+
+                    <p>
+                        SHA-256 detects corrupted files.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- =====================================================
+         FOOTER
+    ====================================================== -->
+
+    <footer>
+
+        <strong>
+            YUKTI QRStream
+        </strong>
+
+        <span>
+            Optical File Transfer
+        </span>
+
+        <span>
+            •
+        </span>
+
+        <span>
+            v1.0
+        </span>
+
+    </footer>
+
+</body>
+
+</html>
