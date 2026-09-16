@@ -1,6 +1,6 @@
 /* =========================================================
    YUKTI QRSTREAM
-   Modern dark interface
+   Reliable Optical File Transfer
 ========================================================= */
 
 :root {
@@ -8,7 +8,9 @@
     --bg: #08090c;
     --surface: #101217;
     --surface-2: #151820;
-    --border: rgba(255,255,255,0.09);
+    --surface-3: #1b1f29;
+
+    --border: rgba(255,255,255,.09);
 
     --text: #f5f7fa;
     --muted: #9298a5;
@@ -17,6 +19,7 @@
     --accent-dark: #9fca16;
 
     --danger: #ff5d67;
+    --success: #70e29b;
 
     --radius: 22px;
 
@@ -31,9 +34,7 @@
 }
 
 
-/* =========================================================
-   RESET
-========================================================= */
+/* RESET */
 
 * {
     box-sizing: border-box;
@@ -61,9 +62,7 @@ body {
 }
 
 
-/* =========================================================
-   BACKGROUND
-========================================================= */
+/* BACKGROUND */
 
 .background-glow {
 
@@ -100,9 +99,7 @@ body {
 }
 
 
-/* =========================================================
-   NAVBAR
-========================================================= */
+/* NAVBAR */
 
 .navbar {
 
@@ -193,16 +190,17 @@ body {
 }
 
 
-/* =========================================================
-   HERO
-========================================================= */
+/* MAIN */
 
 main {
 
-    width: min(900px, calc(100% - 32px));
+    width: min(920px, calc(100% - 32px));
 
     margin: auto;
 }
+
+
+/* HERO */
 
 .hero {
 
@@ -257,7 +255,7 @@ main {
 
 .hero p {
 
-    max-width: 620px;
+    max-width: 650px;
 
     margin: auto;
 
@@ -269,9 +267,7 @@ main {
 }
 
 
-/* =========================================================
-   MODE SWITCH
-========================================================= */
+/* MODE */
 
 .mode-switch {
 
@@ -327,9 +323,7 @@ main {
 }
 
 
-/* =========================================================
-   PANEL
-========================================================= */
+/* PANEL */
 
 .panel {
 
@@ -414,9 +408,7 @@ main {
 }
 
 
-/* =========================================================
-   DROP ZONE
-========================================================= */
+/* DROP ZONE */
 
 .drop-zone {
 
@@ -482,9 +474,7 @@ main {
 }
 
 
-/* =========================================================
-   BUTTONS
-========================================================= */
+/* BUTTONS */
 
 button {
 
@@ -520,6 +510,17 @@ button {
 .download-button:hover {
 
     transform: translateY(-1px);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+
+    opacity: .5;
+
+    cursor: not-allowed;
+
+    transform: none;
 }
 
 .primary-button {
@@ -558,9 +559,7 @@ button {
 }
 
 
-/* =========================================================
-   FILE CARD
-========================================================= */
+/* FILE CARD */
 
 .file-card {
 
@@ -651,9 +650,7 @@ button {
 }
 
 
-/* =========================================================
-   CONFIG
-========================================================= */
+/* CONFIG */
 
 .config-grid {
 
@@ -710,9 +707,7 @@ button {
 }
 
 
-/* =========================================================
-   STREAM
-========================================================= */
+/* STREAM */
 
 .stream-section {
 
@@ -741,6 +736,15 @@ button {
     font-size: 21px;
 }
 
+.stream-hint {
+
+    color: var(--muted);
+
+    font-size: 12px;
+
+    margin-top: 8px;
+}
+
 .live-badge {
 
     display: flex;
@@ -767,12 +771,27 @@ button {
 
     box-shadow:
         0 0 10px var(--accent);
+
+    animation: pulse 1.4s infinite;
+}
+
+@keyframes pulse {
+
+    0% {
+        opacity: .4;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: .4;
+    }
 }
 
 
-/* =========================================================
-   QR
-========================================================= */
+/* QR */
 
 .qr-stage {
 
@@ -866,9 +885,7 @@ button {
 }
 
 
-/* =========================================================
-   FRAME INFO
-========================================================= */
+/* FRAME INFO */
 
 .frame-info {
 
@@ -902,7 +919,8 @@ button {
     border-right: 0;
 }
 
-.frame-info span {
+.frame-info span,
+.stream-status span {
 
     display: block;
 
@@ -913,7 +931,8 @@ button {
     letter-spacing: 1px;
 }
 
-.frame-info strong {
+.frame-info strong,
+.stream-status strong {
 
     display: block;
 
@@ -923,9 +942,32 @@ button {
 }
 
 
-/* =========================================================
-   PROGRESS
-========================================================= */
+/* STREAM STATUS */
+
+.stream-status {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+
+    margin-top: 12px;
+}
+
+.stream-status > div {
+
+    background: var(--surface);
+
+    border: 1px solid var(--border);
+
+    border-radius: 14px;
+
+    padding: 13px;
+}
+
+
+/* PROGRESS */
 
 .progress-bar {
 
@@ -953,6 +995,34 @@ button {
     transition: width .15s linear;
 }
 
+.stream-note {
+
+    margin-top: 13px;
+
+    padding: 12px;
+
+    border-radius: 12px;
+
+    background: rgba(215,255,69,.04);
+
+    border: 1px solid rgba(215,255,69,.08);
+
+    color: var(--muted);
+
+    font-size: 11px;
+
+    line-height: 1.5;
+}
+
+.stream-note span {
+
+    color: var(--accent);
+
+    font-size: 15px;
+
+    margin-right: 5px;
+}
+
 .stream-controls {
 
     display: grid;
@@ -965,9 +1035,7 @@ button {
 }
 
 
-/* =========================================================
-   CAMERA
-========================================================= */
+/* CAMERA */
 
 .camera-wrapper {
 
@@ -1117,9 +1185,7 @@ button {
 }
 
 
-/* =========================================================
-   RECEIVE STATUS
-========================================================= */
+/* RECEIVE */
 
 .receive-status {
 
@@ -1179,6 +1245,14 @@ button {
     margin-top: 4px;
 
     font-size: 14px;
+
+    max-width: 550px;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
 }
 
 .progress-header {
@@ -1237,9 +1311,70 @@ button {
 }
 
 
-/* =========================================================
-   COMPLETION
-========================================================= */
+/* SYNC GRID */
+
+.sync-grid {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 8px;
+
+    margin-top: 10px;
+}
+
+.sync-card {
+
+    padding: 12px;
+
+    background: var(--surface-2);
+
+    border: 1px solid var(--border);
+
+    border-radius: 12px;
+}
+
+.sync-card span {
+
+    display: block;
+
+    color: var(--muted);
+
+    font-size: 8px;
+
+    letter-spacing: 1px;
+}
+
+.sync-card strong {
+
+    display: block;
+
+    margin-top: 5px;
+
+    font-size: 14px;
+}
+
+.receiver-session {
+
+    margin-top: 12px;
+
+    font-family: monospace;
+
+    font-size: 10px;
+
+    color: #686e79;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+}
+
+
+/* COMPLETION */
 
 .completion {
 
@@ -1247,14 +1382,18 @@ button {
 
     padding: 35px 20px;
 
-    margin-top: 20px;
-
-    border-radius: 20px;
-
-    border: 1px solid rgba(215,255,69,.2);
+    margin-top: 18px;
 
     background:
-        rgba(215,255,69,.025);
+        linear-gradient(
+            145deg,
+            rgba(112,226,155,.06),
+            rgba(255,255,255,.02)
+        );
+
+    border: 1px solid rgba(112,226,155,.16);
+
+    border-radius: 18px;
 }
 
 .completion-icon {
@@ -1262,31 +1401,31 @@ button {
     width: 65px;
     height: 65px;
 
+    margin: auto;
+
     display: grid;
 
     place-items: center;
 
-    margin: auto auto 15px;
-
     border-radius: 50%;
 
-    background: var(--accent);
+    background: rgba(112,226,155,.1);
 
-    color: #080a07;
+    color: var(--success);
 
     font-size: 28px;
-
-    font-weight: 900;
 }
 
 .completion h2 {
 
-    margin: 0;
+    margin: 18px 0 8px;
 }
 
 .completion p {
 
     color: var(--muted);
+
+    font-size: 13px;
 
     line-height: 1.6;
 }
@@ -1299,43 +1438,47 @@ button {
 
     gap: 7px;
 
-    padding: 8px 12px;
+    padding: 9px 13px;
 
     border-radius: 100px;
 
-    background: rgba(215,255,69,.08);
+    background: rgba(112,226,155,.08);
 
-    color: var(--accent);
+    color: var(--success);
 
     font-size: 11px;
 
-    margin: 10px 0 18px;
+    margin: 10px 0 16px;
 }
 
 .download-button {
 
-    display: block;
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
 
     text-decoration: none;
 
     background: var(--accent);
 
-    color: #080a07;
+    color: #0b0d08;
+
+    width: 100%;
 
     margin-bottom: 10px;
 }
 
 
-/* =========================================================
-   FEATURES
-========================================================= */
+/* FEATURES */
 
 .features {
 
     display: grid;
 
     grid-template-columns:
-        repeat(3, 1fr);
+        repeat(4, 1fr);
 
     gap: 10px;
 
@@ -1344,62 +1487,58 @@ button {
 
 .feature {
 
-    display: flex;
+    padding: 17px;
 
-    gap: 11px;
-
-    padding: 16px;
-
-    border-radius: 16px;
-
-    background: var(--surface);
+    background: rgba(255,255,255,.025);
 
     border: 1px solid var(--border);
+
+    border-radius: 16px;
 }
 
 .feature-icon {
 
     color: var(--accent);
 
+    margin-bottom: 12px;
+
     font-size: 18px;
 }
 
 .feature strong {
-
-    display: block;
 
     font-size: 12px;
 }
 
 .feature p {
 
+    margin: 6px 0 0;
+
     color: var(--muted);
 
     font-size: 10px;
 
     line-height: 1.5;
-
-    margin: 5px 0 0;
 }
 
 
-/* =========================================================
-   FOOTER
-========================================================= */
+/* FOOTER */
 
 footer {
 
     width: min(900px, calc(100% - 32px));
 
-    margin: 25px auto 35px;
+    margin: 40px auto;
 
     display: flex;
 
     justify-content: center;
 
+    align-items: center;
+
     gap: 10px;
 
-    color: #606671;
+    color: #666c76;
 
     font-size: 11px;
 }
@@ -1410,16 +1549,20 @@ footer strong {
 }
 
 
-/* =========================================================
-   RESPONSIVE
-========================================================= */
+/* RESPONSIVE */
 
 @media (max-width: 700px) {
 
     .navbar {
 
-        width: calc(100% - 25px);
+        width: min(100% - 24px, 1100px);
 
+        padding: 18px 0;
+    }
+
+    main {
+
+        width: min(100% - 20px, 920px);
     }
 
     .hero {
@@ -1432,27 +1575,66 @@ footer strong {
         letter-spacing: -2px;
     }
 
+    .panel {
+
+        padding: 20px;
+    }
+
     .config-grid,
     .features {
 
         grid-template-columns: 1fr;
     }
 
-    .frame-info {
+    .sync-grid {
+
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stream-status {
 
         grid-template-columns: 1fr;
     }
 
-    .frame-info > div {
+    .stream-top {
 
-        border-right: 0;
-
-        border-bottom: 1px solid var(--border);
+        gap: 10px;
     }
 
-    .frame-info > div:last-child {
+    .frame-info strong {
 
-        border-bottom: 0;
+        font-size: 12px;
+    }
+
+    .camera-corner {
+
+        width: 35px;
+        height: 35px;
+    }
+
+    footer {
+
+        flex-wrap: wrap;
+
+        margin-bottom: 25px;
+    }
+}
+
+@media (max-width: 430px) {
+
+    .panel-header {
+
+        margin-bottom: 20px;
+    }
+
+    .panel-icon {
+
+        display: none;
+    }
+
+    .qr-stage {
+
+        padding: 15px;
     }
 
     .receiver-stats {
@@ -1460,9 +1642,8 @@ footer strong {
         grid-template-columns: 1fr;
     }
 
-    footer {
+    .stream-controls {
 
-        flex-wrap: wrap;
+        grid-template-columns: 1fr;
     }
-
 }

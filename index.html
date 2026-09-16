@@ -11,15 +11,12 @@
 
     <meta
         name="description"
-        content="YUKTI QRStream - Offline optical file sharing"
+        content="YUKTI QRStream - Reliable offline optical file sharing"
     >
 
     <title>YUKTI QRStream</title>
 
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
+    <link rel="stylesheet" href="style.css">
 
     <!-- QR Generator -->
     <script
@@ -27,6 +24,13 @@
         defer
     ></script>
 
+    <!-- QR Scanner -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"
+        defer
+    ></script>
+
+    <!-- Application -->
     <script
         src="app.js"
         defer
@@ -35,18 +39,10 @@
 
 <body>
 
-    <!-- =====================================================
-         BACKGROUND
-    ====================================================== -->
-
     <div class="background-glow glow-one"></div>
     <div class="background-glow glow-two"></div>
 
-
-    <!-- =====================================================
-         NAVBAR
-    ====================================================== -->
-
+    <!-- NAVBAR -->
     <header class="navbar">
 
         <div class="brand">
@@ -67,7 +63,6 @@
 
         </div>
 
-
         <div class="connection-status">
 
             <span
@@ -84,12 +79,9 @@
     </header>
 
 
-    <!-- =====================================================
-         HERO
-    ====================================================== -->
-
     <main>
 
+        <!-- HERO -->
         <section class="hero">
 
             <div class="hero-badge">
@@ -104,21 +96,20 @@
 
             <p>
                 Transfer photos, videos, audio and documents
-                using continuously changing QR frames.
+                through continuously repeated QR frames.
+                Missed frames are automatically retransmitted.
             </p>
 
         </section>
 
 
-        <!-- =================================================
-             MODE SWITCH
-        ================================================== -->
-
+        <!-- MODE -->
         <section class="mode-switch">
 
             <button
                 class="mode-button active"
                 id="sendModeButton"
+                type="button"
             >
                 <span>↑</span>
                 Send
@@ -127,6 +118,7 @@
             <button
                 class="mode-button"
                 id="receiveModeButton"
+                type="button"
             >
                 <span>⌁</span>
                 Receive
@@ -135,9 +127,9 @@
         </section>
 
 
-        <!-- =================================================
+        <!-- =====================================================
              SEND PANEL
-        ================================================== -->
+        ====================================================== -->
 
         <section
             class="panel"
@@ -157,8 +149,8 @@
                     </h2>
 
                     <p>
-                        Choose a file and turn your screen
-                        into an optical transmitter.
+                        Turn your screen into an optical transmitter.
+                        Keep the QR visible until the receiver reaches 100%.
                     </p>
 
                 </div>
@@ -170,7 +162,7 @@
             </div>
 
 
-            <!-- FILE DROP -->
+            <!-- DROP ZONE -->
 
             <div
                 class="drop-zone"
@@ -198,6 +190,7 @@
                 <button
                     class="secondary-button"
                     id="chooseFileButton"
+                    type="button"
                 >
                     Choose File
                 </button>
@@ -225,7 +218,7 @@
                 <div class="file-details">
 
                     <h3 id="senderFileName">
-                        file.jpg
+                        file
                     </h3>
 
                     <div class="file-meta">
@@ -237,7 +230,7 @@
                         <span>•</span>
 
                         <span id="senderFileType">
-                            image/jpeg
+                            application/octet-stream
                         </span>
 
                     </div>
@@ -247,6 +240,7 @@
                 <button
                     class="remove-button"
                     id="removeFileButton"
+                    type="button"
                 >
                     ×
                 </button>
@@ -254,7 +248,7 @@
             </div>
 
 
-            <!-- SEND CONFIG -->
+            <!-- CONFIG -->
 
             <div
                 class="config-grid hidden"
@@ -268,11 +262,11 @@
                     </span>
 
                     <strong>
-                        850 bytes
+                        700 bytes
                     </strong>
 
                     <small>
-                        Camera-friendly QR payload
+                        Camera-friendly payload
                     </small>
 
                 </div>
@@ -280,15 +274,15 @@
                 <div class="config-card">
 
                     <span class="config-label">
-                        ENCODING
+                        STREAM
                     </span>
 
                     <strong>
-                        Base64
+                        Continuous
                     </strong>
 
                     <small>
-                        Binary-safe transfer
+                        Automatic retransmission
                     </small>
 
                 </div>
@@ -304,7 +298,7 @@
                     </strong>
 
                     <small>
-                        File verification
+                        Final file verification
                     </small>
 
                 </div>
@@ -312,18 +306,19 @@
             </div>
 
 
-            <!-- START BUTTON -->
+            <!-- START -->
 
             <button
                 class="primary-button hidden"
                 id="startSendButton"
+                type="button"
             >
                 Start QR Stream
                 <span>→</span>
             </button>
 
 
-            <!-- SENDER STREAM -->
+            <!-- STREAM -->
 
             <div
                 class="stream-section hidden"
@@ -342,17 +337,22 @@
                             Show this QR to receiver
                         </h2>
 
+                        <p class="stream-hint">
+                            Move the receiver camera if necessary.
+                            The stream keeps repeating until you stop it.
+                        </p>
+
                     </div>
 
-                    <div
-                        class="live-badge"
-                    >
+                    <div class="live-badge">
                         <span></span>
                         LIVE
                     </div>
 
                 </div>
 
+
+                <!-- QR -->
 
                 <div class="qr-stage">
 
@@ -368,6 +368,8 @@
 
                 </div>
 
+
+                <!-- FRAME INFO -->
 
                 <div class="frame-info">
 
@@ -386,11 +388,11 @@
                     <div>
 
                         <span>
-                            PROGRESS
+                            CYCLE
                         </span>
 
-                        <strong id="senderProgressText">
-                            0%
+                        <strong id="senderCycle">
+                            0
                         </strong>
 
                     </div>
@@ -401,8 +403,39 @@
                             SPEED
                         </span>
 
-                        <strong>
-                            4 FPS
+                        <strong id="senderSpeed">
+                            2.4 FPS
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <!-- SENDER STATUS -->
+
+                <div class="stream-status">
+
+                    <div>
+
+                        <span>
+                            STREAM STATUS
+                        </span>
+
+                        <strong id="senderStreamState">
+                            Starting...
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            TRANSMISSION
+                        </span>
+
+                        <strong id="senderProgressText">
+                            0%
                         </strong>
 
                     </div>
@@ -420,11 +453,19 @@
                 </div>
 
 
+                <div class="stream-note">
+                    <span>↻</span>
+                    Continuous retransmission is active.
+                    Receiver completion is independent of sender progress.
+                </div>
+
+
                 <div class="stream-controls">
 
                     <button
                         class="secondary-button"
                         id="pauseSendButton"
+                        type="button"
                     >
                         Pause
                     </button>
@@ -432,6 +473,7 @@
                     <button
                         class="danger-button"
                         id="stopSendButton"
+                        type="button"
                     >
                         Stop
                     </button>
@@ -443,9 +485,9 @@
         </section>
 
 
-        <!-- =================================================
+        <!-- =====================================================
              RECEIVE PANEL
-        ================================================== -->
+        ====================================================== -->
 
         <section
             class="panel hidden"
@@ -466,7 +508,8 @@
 
                     <p>
                         Point your camera toward the sender's
-                        changing QR code.
+                        changing QR code. Missing frames are collected
+                        automatically during repeated cycles.
                     </p>
 
                 </div>
@@ -518,6 +561,7 @@
             <button
                 class="primary-button"
                 id="startCameraButton"
+                type="button"
             >
                 Start Camera
                 <span>⌁</span>
@@ -544,7 +588,7 @@
                         </span>
 
                         <strong id="receiverFileName">
-                            file
+                            Waiting for sender...
                         </strong>
 
                     </div>
@@ -557,7 +601,7 @@
                     <div class="progress-header">
 
                         <span>
-                            Frames received
+                            Unique frames received
                         </span>
 
                         <strong id="receiverFrameText">
@@ -577,6 +621,8 @@
 
                 </div>
 
+
+                <!-- RECEIVER METRICS -->
 
                 <div class="receiver-stats">
 
@@ -599,7 +645,7 @@
                         </span>
 
                         <strong id="missingFrames">
-                            0
+                            —
                         </strong>
 
                     </div>
@@ -611,11 +657,74 @@
                         </span>
 
                         <strong id="receiverState">
-                            Scanning
+                            Waiting
                         </strong>
 
                     </div>
 
+                </div>
+
+
+                <!-- EXTRA SYNC METRICS -->
+
+                <div class="sync-grid">
+
+                    <div class="sync-card">
+
+                        <span>
+                            SCANNED
+                        </span>
+
+                        <strong id="scannedFrames">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div class="sync-card">
+
+                        <span>
+                            UNIQUE
+                        </span>
+
+                        <strong id="uniqueFrames">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div class="sync-card">
+
+                        <span>
+                            DUPLICATES
+                        </span>
+
+                        <strong id="duplicateFrames">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div class="sync-card">
+
+                        <span>
+                            CYCLES
+                        </span>
+
+                        <strong id="receiverCycles">
+                            0
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="receiver-session"
+                    id="receiverSessionText"
+                >
+                    Waiting for session...
                 </div>
 
             </div>
@@ -637,8 +746,7 @@
                 </h2>
 
                 <p id="completionText">
-                    Your file has been reconstructed
-                    and verified.
+                    Your file has been reconstructed and verified.
                 </p>
 
                 <div class="hash-status">
@@ -650,6 +758,7 @@
                     class="download-button"
                     id="downloadButton"
                     href="#"
+                    download
                 >
                     Download File
                     <span>↓</span>
@@ -658,6 +767,7 @@
                 <button
                     class="secondary-button"
                     id="newReceiveButton"
+                    type="button"
                 >
                     Receive Another File
                 </button>
@@ -667,9 +777,7 @@
         </section>
 
 
-        <!-- =================================================
-             FEATURES
-        ================================================== -->
+        <!-- FEATURES -->
 
         <section class="features">
 
@@ -693,6 +801,7 @@
 
             </div>
 
+
             <div class="feature">
 
                 <div class="feature-icon">
@@ -713,6 +822,28 @@
 
             </div>
 
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    ↻
+                </div>
+
+                <div>
+
+                    <strong>
+                        Self-repeating stream
+                    </strong>
+
+                    <p>
+                        Missed frames are transmitted again.
+                    </p>
+
+                </div>
+
+            </div>
+
+
             <div class="feature">
 
                 <div class="feature-icon">
@@ -726,7 +857,7 @@
                     </strong>
 
                     <p>
-                        SHA-256 detects corrupted files.
+                        SHA-256 confirms file integrity.
                     </p>
 
                 </div>
@@ -737,10 +868,6 @@
 
     </main>
 
-
-    <!-- =====================================================
-         FOOTER
-    ====================================================== -->
 
     <footer>
 
@@ -757,7 +884,7 @@
         </span>
 
         <span>
-            v1.0
+            v2.0
         </span>
 
     </footer>

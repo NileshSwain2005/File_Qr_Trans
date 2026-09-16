@@ -1,6 +1,6 @@
 /* =========================================================
-   YUKTI QRSTREAM
-   Frontend Optical File Transfer
+   YUKTI QRSTREAM v2.0
+   Reliable Continuous Optical File Transfer
 ========================================================= */
 
 "use strict";
@@ -12,25 +12,48 @@
 
 const CONFIG = {
 
-    // Keep this relatively small for camera reliability.
-    CHUNK_SIZE: 850,
+    /*
+     * Smaller payload = easier camera decoding.
+     */
+    CHUNK_SIZE: 700,
 
-    // QR frame interval.
-    FRAME_INTERVAL: 250,
+    /*
+     * Approximately 2.4 QR frames/second.
+     *
+     * Increase to 500-600ms if the phone camera
+     * has difficulty decoding.
+     */
+    FRAME_INTERVAL: 420,
 
-    // Maximum time before a duplicate frame is accepted again.
-    DUPLICATE_TIMEOUT: 1000,
+    /*
+     * Scanner interval.
+     */
+    SCAN_INTERVAL: 90,
 
+    /*
+     * Send metadata again every N data frames.
+     * This makes synchronization much faster.
+     */
+    META_EVERY: 10,
+
+    /*
+     * Application identifier.
+     */
+    APP: "YUKTI_QRSTREAM",
+
+    VERSION: 2
 };
 
 
 /* =========================================================
-   APPLICATION STATE
+   STATE
 ========================================================= */
 
 const state = {
 
     mode: "send",
+
+    /* ---------------- Sender ---------------- */
 
     file: null,
 
@@ -44,15 +67,25 @@ const state = {
 
     currentFrame: 0,
 
+    cycle: 0,
+
     sending: false,
 
     paused: false,
 
     timer: null,
 
+    framesTransmitted: 0,
+
+    transmissionStartedAt: 0,
+
+    /* ---------------- Receiver ---------------- */
+
     cameraStream: null,
 
     scanning: false,
+
+    scanTimer: null,
 
     receiverSession: null,
 
@@ -60,10 +93,21 @@ const state = {
 
     receiverPackets: new Map(),
 
-    lastPacket: null,
+    receiverCompleted: false,
 
-    lastPacketTime: 0,
+    receivedBytes: 0,
 
+    scannedFrames: 0,
+
+    duplicateFrames: 0,
+
+    receiverCycles: new Set(),
+
+    lastRawPacket: null,
+
+    lastRawPacketTime: 0,
+
+    downloadUrl: null
 };
 
 
@@ -71,7 +115,7 @@ const state = {
    DOM
 ========================================================= */
 
-const $ = (id) =>
+const $ = id =>
     document.getElementById(id);
 
 
@@ -133,11 +177,20 @@ const qrContainer =
 const currentFrame =
     $("currentFrame");
 
+const senderCycle =
+    $("senderCycle");
+
+const senderSpeed =
+    $("senderSpeed");
+
 const senderProgress =
     $("senderProgress");
 
 const senderProgressText =
     $("senderProgressText");
+
+const senderStreamState =
+    $("senderStreamState");
 
 const pauseSendButton =
     $("pauseSendButton");
@@ -178,6 +231,21 @@ const missingFrames =
 const receiverState =
     $("receiverState");
 
+const scannedFrames =
+    $("scannedFrames");
+
+const uniqueFrames =
+    $("uniqueFrames");
+
+const duplicateFrames =
+    $("duplicateFrames");
+
+const receiverCycles =
+    $("receiverCycles");
+
+const receiverSessionText =
+    $("receiverSessionText");
+
 const completionBox =
     $("completionBox");
 
@@ -190,27 +258,34 @@ const downloadButton =
 const newReceiveButton =
     $("newReceiveButton");
 
-const statusDot =
-    $("statusDot");
-
 const statusText =
     $("statusText");
 
+const statusDot =
+    $("statusDot");
+
 
 /* =========================================================
-   GENERAL HELPERS
+   HELPERS
 ========================================================= */
 
 function humanSize(bytes) {
 
-    if (bytes < 1024)
+    if (!Number.isFinite(bytes)) {
+        return "0 B";
+    }
+
+    if (bytes < 1024) {
         return `${bytes} B`;
+    }
 
-    if (bytes < 1024 * 1024)
+    if (bytes < 1024 * 1024) {
         return `${(bytes / 1024).toFixed(2)} KB`;
+    }
 
-    if (bytes < 1024 * 1024 * 1024)
+    if (bytes < 1024 * 1024 * 1024) {
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
 
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
@@ -225,10 +300,10 @@ function generateSessionId() {
 
     return Array
         .from(random)
-        .map(
-            x =>
-                x.toString(16)
-                    .padStart(8, "0")
+        .map(value =>
+            value
+                .toString(16)
+                .padStart(8, "0")
         )
         .join("")
         .slice(0, 12)
@@ -238,8 +313,51 @@ function generateSessionId() {
 
 function setStatus(text) {
 
-    statusText.textContent =
-        text;
+    if (statusText) {
+        statusText.textContent = text;
+    }
+}
+
+
+function setStatusOnline() {
+
+    if (!statusDot) {
+        return;
+    }
+
+    statusDot.style.background =
+        "var(--accent)";
+
+    statusDot.style.boxShadow =
+        "0 0 12px var(--accent)";
+}
+
+
+function setStatusSuccess() {
+
+    if (!statusDot) {
+        return;
+    }
+
+    statusDot.style.background =
+        "var(--success)";
+
+    statusDot.style.boxShadow =
+        "0 0 12px var(--success)";
+}
+
+
+function setStatusDanger() {
+
+    if (!statusDot) {
+        return;
+    }
+
+    statusDot.style.background =
+        "var(--danger)";
+
+    statusDot.style.boxShadow =
+        "0 0 12px var(--danger)";
 }
 
 
@@ -248,27 +366,169 @@ function setFileIcon(file) {
     const type =
         file.type || "";
 
-    if (type.startsWith("image/"))
+    if (type.startsWith("image/")) {
         return "IMG";
+    }
 
-    if (type.startsWith("video/"))
+    if (type.startsWith("video/")) {
         return "VID";
+    }
 
-    if (type.startsWith("audio/"))
+    if (type.startsWith("audio/")) {
         return "AUD";
+    }
 
-    if (type.includes("pdf"))
+    if (type.includes("pdf")) {
         return "PDF";
+    }
 
-    if (type.includes("zip"))
+    if (
+        type.includes("zip") ||
+        type.includes("compressed")
+    ) {
         return "ZIP";
+    }
+
+    if (
+        type.includes("text") ||
+        type.includes("json")
+    ) {
+        return "TXT";
+    }
 
     return "FILE";
 }
 
 
 /* =========================================================
-   MODE SWITCHING
+   BASE64
+========================================================= */
+
+function arrayBufferToBase64(buffer) {
+
+    const bytes =
+        new Uint8Array(buffer);
+
+    let binary = "";
+
+    const blockSize = 0x8000;
+
+    for (
+        let i = 0;
+        i < bytes.length;
+        i += blockSize
+    ) {
+
+        const chunk =
+            bytes.subarray(
+                i,
+                i + blockSize
+            );
+
+        binary +=
+            String.fromCharCode(
+                ...chunk
+            );
+    }
+
+    return btoa(binary);
+}
+
+
+function base64ToUint8Array(base64) {
+
+    const binary =
+        atob(base64);
+
+    const bytes =
+        new Uint8Array(
+            binary.length
+        );
+
+    for (
+        let i = 0;
+        i < binary.length;
+        i++
+    ) {
+
+        bytes[i] =
+            binary.charCodeAt(i);
+    }
+
+    return bytes;
+}
+
+
+/* =========================================================
+   SHA-256
+========================================================= */
+
+async function calculateSHA256(buffer) {
+
+    const hashBuffer =
+        await crypto.subtle.digest(
+            "SHA-256",
+            buffer
+        );
+
+    const hashArray =
+        Array.from(
+            new Uint8Array(hashBuffer)
+        );
+
+    return hashArray
+        .map(byte =>
+            byte
+                .toString(16)
+                .padStart(2, "0")
+        )
+        .join("");
+}
+
+
+/* =========================================================
+   SPLIT FILE
+========================================================= */
+
+function splitBuffer(
+    buffer,
+    chunkSize
+) {
+
+    const chunks = [];
+
+    for (
+        let offset = 0;
+        offset < buffer.byteLength;
+        offset += chunkSize
+    ) {
+
+        chunks.push(
+            buffer.slice(
+                offset,
+                Math.min(
+                    offset + chunkSize,
+                    buffer.byteLength
+                )
+            )
+        );
+    }
+
+    /*
+     * Empty files need one chunk.
+     */
+    if (chunks.length === 0) {
+        chunks.push(
+            new ArrayBuffer(0)
+        );
+    }
+
+    return chunks;
+}
+
+
+/* =========================================================
+   MODE SWITCH
 ========================================================= */
 
 sendModeButton.addEventListener(
@@ -296,6 +556,8 @@ sendModeButton.addEventListener(
         stopCamera();
 
         setStatus("Send mode");
+
+        setStatusOnline();
     }
 );
 
@@ -323,12 +585,14 @@ receiveModeButton.addEventListener(
         );
 
         setStatus("Receive mode");
+
+        setStatusOnline();
     }
 );
 
 
 /* =========================================================
-   FILE SELECTION
+   FILE PICKER
 ========================================================= */
 
 chooseFileButton.addEventListener(
@@ -348,7 +612,6 @@ fileInput.addEventListener(
             event.target.files[0];
 
         if (file) {
-
             prepareFile(file);
         }
     }
@@ -397,7 +660,6 @@ dropZone.addEventListener(
             event.dataTransfer.files[0];
 
         if (file) {
-
             prepareFile(file);
         }
     }
@@ -408,7 +670,7 @@ dropZone.addEventListener(
    PREPARE FILE
 ========================================================= */
 
-async function prepareFile(file) {
+function prepareFile(file) {
 
     stopSending();
 
@@ -421,7 +683,8 @@ async function prepareFile(file) {
         humanSize(file.size);
 
     senderFileType.textContent =
-        file.type || "Unknown file type";
+        file.type ||
+        "application/octet-stream";
 
     fileTypeIcon.textContent =
         setFileIcon(file);
@@ -438,7 +701,11 @@ async function prepareFile(file) {
         "hidden"
     );
 
-    setStatus("File selected");
+    setStatus(
+        "File selected"
+    );
+
+    setStatusOnline();
 }
 
 
@@ -458,97 +725,77 @@ removeFileButton.addEventListener(
 
 
 /* =========================================================
-   SHA-256
+   CREATE METADATA PACKET
 ========================================================= */
 
-async function calculateSHA256(buffer) {
+function createMetaPacket() {
 
-    const hashBuffer =
-        await crypto.subtle.digest(
-            "SHA-256",
-            buffer
-        );
+    return {
 
-    const hashArray =
-        Array.from(
-            new Uint8Array(hashBuffer)
-        );
+        app: CONFIG.APP,
 
-    return hashArray
-        .map(
-            byte =>
-                byte
-                    .toString(16)
-                    .padStart(2, "0")
-        )
-        .join("");
+        version: CONFIG.VERSION,
+
+        type: "meta",
+
+        session:
+            state.sessionId,
+
+        filename:
+            state.file.name,
+
+        mime:
+            state.file.type ||
+            "application/octet-stream",
+
+        size:
+            state.file.size,
+
+        total:
+            state.chunks.length,
+
+        chunkSize:
+            CONFIG.CHUNK_SIZE,
+
+        hash:
+            state.fileHash
+    };
 }
 
 
 /* =========================================================
-   ARRAY BUFFER -> BASE64
+   CREATE CHUNK PACKET
 ========================================================= */
 
-function arrayBufferToBase64(buffer) {
+function createChunkPacket(index) {
 
-    const bytes =
-        new Uint8Array(buffer);
+    const chunk =
+        state.chunks[index];
 
-    let binary = "";
+    return {
 
-    const blockSize = 0x8000;
+        app: CONFIG.APP,
 
-    for (
-        let i = 0;
-        i < bytes.length;
-        i += blockSize
-    ) {
+        version: CONFIG.VERSION,
 
-        const chunk =
-            bytes.subarray(
-                i,
-                i + blockSize
-            );
+        type: "chunk",
 
-        binary +=
-            String.fromCharCode(
-                ...chunk
-            );
-    }
+        session:
+            state.sessionId,
 
-    return btoa(binary);
-}
+        index,
 
+        total:
+            state.chunks.length,
 
-/* =========================================================
-   SPLIT FILE
-========================================================= */
+        cycle:
+            state.cycle,
 
-function splitBuffer(
-    buffer,
-    chunkSize
-) {
-
-    const chunks = [];
-
-    for (
-        let offset = 0;
-        offset < buffer.byteLength;
-        offset += chunkSize
-    ) {
-
-        chunks.push(
-            buffer.slice(
-                offset,
-                Math.min(
-                    offset + chunkSize,
-                    buffer.byteLength
-                )
+        data:
+            arrayBufferToBase64(
+                chunk
             )
-        );
-    }
-
-    return chunks;
+    };
 }
 
 
@@ -582,29 +829,54 @@ async function startSending() {
         startSendButton.disabled =
             true;
 
+        /*
+         * Read file.
+         */
         state.fileData =
             await state.file.arrayBuffer();
 
+        /*
+         * Calculate integrity hash.
+         */
         state.fileHash =
             await calculateSHA256(
                 state.fileData
             );
 
+        /*
+         * Split into small chunks.
+         */
         state.chunks =
             splitBuffer(
                 state.fileData,
                 CONFIG.CHUNK_SIZE
             );
 
+        /*
+         * New session.
+         */
         state.sessionId =
             generateSessionId();
 
+        /*
+         * Reset stream.
+         */
         state.currentFrame = 0;
+
+        state.cycle = 1;
+
+        state.framesTransmitted = 0;
+
+        state.transmissionStartedAt =
+            Date.now();
 
         state.sending = true;
 
         state.paused = false;
 
+        /*
+         * UI.
+         */
         senderStream.classList.remove(
             "hidden"
         );
@@ -621,18 +893,44 @@ async function startSending() {
             "hidden"
         );
 
+        pauseSendButton.disabled =
+            false;
+
         pauseSendButton.textContent =
             "Pause";
 
+        senderProgress.style.width =
+            "0%";
+
+        senderProgressText.textContent =
+            "0%";
+
+        senderCycle.textContent =
+            "1";
+
+        senderStreamState.textContent =
+            "Synchronizing...";
+
+        currentFrame.textContent =
+            `0 / ${state.chunks.length}`;
+
         setStatus(
-            "Streaming QR frames"
+            "QR stream active"
         );
 
+        setStatusOnline();
+
+        /*
+         * Begin continuous transmission.
+         */
         showNextFrame();
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "Send preparation error:",
+            error
+        );
 
         alert(
             "Unable to prepare the file."
@@ -645,54 +943,6 @@ async function startSending() {
 
 
 /* =========================================================
-   CREATE PACKET
-========================================================= */
-
-function createPacket(index) {
-
-    const chunk =
-        state.chunks[index];
-
-    const packet = {
-
-        app: "YUKTI_QRSTREAM",
-
-        version: 1,
-
-        session:
-            state.sessionId,
-
-        filename:
-            state.file.name,
-
-        mime:
-            state.file.type ||
-            "application/octet-stream",
-
-        size:
-            state.file.size,
-
-        hash:
-            state.fileHash,
-
-        index:
-            index,
-
-        total:
-            state.chunks.length,
-
-        data:
-            arrayBufferToBase64(
-                chunk
-            )
-
-    };
-
-    return packet;
-}
-
-
-/* =========================================================
    RENDER QR
 ========================================================= */
 
@@ -700,11 +950,9 @@ function renderQR(packet) {
 
     qrContainer.innerHTML = "";
 
-    const payload =
-        JSON.stringify(packet);
-
     if (
-        typeof QRCode === "undefined"
+        typeof QRCode ===
+        "undefined"
     ) {
 
         qrContainer.innerHTML = `
@@ -714,73 +962,163 @@ function renderQR(packet) {
                 padding:20px;
                 font-weight:bold;
             ">
-                QR library is loading...
+                QR generator is loading...
             </div>
         `;
 
         return;
     }
 
-    new QRCode(
-        qrContainer,
-        {
-            text: payload,
+    const payload =
+        JSON.stringify(packet);
 
-            width: 410,
+    try {
 
-            height: 410,
+        new QRCode(
+            qrContainer,
+            {
 
-            colorDark: "#000000",
+                text:
+                    payload,
 
-            colorLight: "#ffffff",
+                width:
+                    410,
 
-            correctLevel:
-                QRCode.CorrectLevel.M
-        }
-    );
+                height:
+                    410,
+
+                colorDark:
+                    "#000000",
+
+                colorLight:
+                    "#ffffff",
+
+                correctLevel:
+                    QRCode.CorrectLevel.M
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "QR generation error:",
+            error
+        );
+    }
 }
 
 
 /* =========================================================
-   SHOW NEXT FRAME
+   CONTINUOUS STREAM
 ========================================================= */
 
 function showNextFrame() {
 
-    if (!state.sending)
-        return;
-
-    if (state.paused)
-        return;
-
-    if (
-        state.currentFrame
-        >= state.chunks.length
-    ) {
-
-        finishSending();
-
+    if (!state.sending) {
         return;
     }
 
-    const packet =
-        createPacket(
-            state.currentFrame
-        );
-
-    renderQR(packet);
+    if (state.paused) {
+        return;
+    }
 
     const total =
         state.chunks.length;
 
-    const frame =
+    /*
+     * -------------------------------------------------------
+     * END OF CURRENT CYCLE
+     * -------------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * We DO NOT stop here.
+     *
+     * We start another cycle.
+     */
+
+    if (
+        state.currentFrame >=
+        total
+    ) {
+
+        state.currentFrame = 0;
+
+        state.cycle++;
+
+        senderCycle.textContent =
+            state.cycle;
+    }
+
+
+    /*
+     * -------------------------------------------------------
+     * METADATA
+     * -------------------------------------------------------
+     *
+     * Metadata is shown:
+     *
+     * 1. At the beginning of every cycle.
+     * 2. Every META_EVERY frames.
+     *
+     * This helps a receiver join late.
+     */
+
+    const shouldSendMeta =
+        state.currentFrame === 0 ||
+        state.currentFrame %
+            CONFIG.META_EVERY === 0;
+
+
+    let packet;
+
+    if (shouldSendMeta) {
+
+        packet =
+            createMetaPacket();
+
+        /*
+         * Add cycle information.
+         */
+        packet.cycle =
+            state.cycle;
+
+    } else {
+
+        packet =
+            createChunkPacket(
+                state.currentFrame
+            );
+    }
+
+
+    /*
+     * Render QR.
+     */
+
+    renderQR(packet);
+
+
+    /*
+     * Frame UI.
+     */
+
+    const displayFrame =
         state.currentFrame + 1;
 
-    const progress =
-        (frame / total) * 100;
-
     currentFrame.textContent =
-        `${frame} / ${total}`;
+        `${displayFrame} / ${total}`;
+
+    /*
+     * This progress is ONLY sender
+     * cycle progress.
+     *
+     * It does NOT mean receiver progress.
+     */
+
+    const progress =
+        (state.currentFrame / total) *
+        100;
 
     senderProgress.style.width =
         `${progress}%`;
@@ -788,7 +1126,46 @@ function showNextFrame() {
     senderProgressText.textContent =
         `${progress.toFixed(1)}%`;
 
+
+    /*
+     * Transmission statistics.
+     */
+
+    state.framesTransmitted++;
+
+    const elapsed =
+        Math.max(
+            1,
+            (Date.now() -
+                state.transmissionStartedAt) /
+                1000
+        );
+
+    const fps =
+        state.framesTransmitted /
+        elapsed;
+
+    senderSpeed.textContent =
+        `${fps.toFixed(1)} FPS`;
+
+    senderStreamState.textContent =
+        `Streaming · Cycle ${state.cycle}`;
+
+
+    /*
+     * Move to next chunk.
+     */
+
     state.currentFrame++;
+
+
+    /*
+     * Schedule next QR.
+     */
+
+    clearTimeout(
+        state.timer
+    );
 
     state.timer =
         setTimeout(
@@ -806,8 +1183,9 @@ pauseSendButton.addEventListener(
     "click",
     () => {
 
-        if (!state.sending)
+        if (!state.sending) {
             return;
+        }
 
         state.paused =
             !state.paused;
@@ -821,8 +1199,11 @@ pauseSendButton.addEventListener(
             pauseSendButton.textContent =
                 "Resume";
 
+            senderStreamState.textContent =
+                "Paused";
+
             setStatus(
-                "Stream paused"
+                "QR stream paused"
             );
 
         } else {
@@ -830,8 +1211,11 @@ pauseSendButton.addEventListener(
             pauseSendButton.textContent =
                 "Pause";
 
+            senderStreamState.textContent =
+                "Streaming";
+
             setStatus(
-                "Streaming QR frames"
+                "QR stream active"
             );
 
             showNextFrame();
@@ -841,7 +1225,7 @@ pauseSendButton.addEventListener(
 
 
 /* =========================================================
-   STOP
+   STOP SENDING
 ========================================================= */
 
 stopSendButton.addEventListener(
@@ -860,6 +1244,8 @@ function stopSending() {
         state.timer
     );
 
+    state.timer = null;
+
     senderStream.classList.add(
         "hidden"
     );
@@ -876,38 +1262,27 @@ function stopSending() {
         "hidden"
     );
 
-    startSendButton.classList.remove(
-        "hidden"
-    );
+    if (state.file) {
 
-    startSendButton.disabled =
-        false;
+        startSendButton.classList.remove(
+            "hidden"
+        );
 
-    setStatus("Ready");
-}
-
-
-/* =========================================================
-   FINISH SENDING
-========================================================= */
-
-function finishSending() {
-
-    state.sending = false;
-
-    clearTimeout(
-        state.timer
-    );
-
-    setStatus(
-        "Transfer stream completed"
-    );
-
-    pauseSendButton.textContent =
-        "Completed";
+        startSendButton.disabled =
+            false;
+    }
 
     pauseSendButton.disabled =
-        true;
+        false;
+
+    pauseSendButton.textContent =
+        "Pause";
+
+    setStatus(
+        "Ready"
+    );
+
+    setStatusOnline();
 }
 
 
@@ -931,6 +1306,10 @@ function resetSender() {
 
     state.currentFrame = 0;
 
+    state.cycle = 0;
+
+    state.framesTransmitted = 0;
+
     senderFileCard.classList.add(
         "hidden"
     );
@@ -949,7 +1328,21 @@ function resetSender() {
 
     qrContainer.innerHTML = "";
 
-    setStatus("Ready");
+    currentFrame.textContent =
+        "0 / 0";
+
+    senderCycle.textContent =
+        "0";
+
+    senderProgress.style.width =
+        "0%";
+
+    senderProgressText.textContent =
+        "0%";
+
+    setStatus(
+        "Ready"
+    );
 }
 
 
@@ -966,13 +1359,28 @@ startCameraButton.addEventListener(
 async function startCamera() {
 
     if (
-        !navigator.mediaDevices
-        ||
+        !navigator.mediaDevices ||
         !navigator.mediaDevices.getUserMedia
     ) {
 
         alert(
-            "Your browser does not support camera access."
+            "Camera access is not supported by this browser."
+        );
+
+        return;
+    }
+
+    /*
+     * jsQR must be available.
+     */
+
+    if (
+        typeof jsQR !==
+        "function"
+    ) {
+
+        alert(
+            "QR scanner is still loading. Please try again."
         );
 
         return;
@@ -980,29 +1388,37 @@ async function startCamera() {
 
     try {
 
+        stopCamera();
+
         state.cameraStream =
-            await navigator.mediaDevices.getUserMedia(
-                {
-                    video: {
-                        facingMode: {
-                            ideal: "environment"
+            await navigator.mediaDevices
+                .getUserMedia(
+                    {
+
+                        video: {
+
+                            facingMode: {
+                                ideal:
+                                    "environment"
+                            },
+
+                            width: {
+                                ideal: 1280
+                            },
+
+                            height: {
+                                ideal: 720
+                            }
                         },
 
-                        width: {
-                            ideal: 1280
-                        },
-
-                        height: {
-                            ideal: 720
-                        }
-                    },
-
-                    audio: false
-                }
-            );
+                        audio: false
+                    }
+                );
 
         cameraVideo.srcObject =
             state.cameraStream;
+
+        await cameraVideo.play();
 
         state.scanning = true;
 
@@ -1019,11 +1435,29 @@ async function startCamera() {
             "Camera scanning"
         );
 
+        setStatusOnline();
+
+        /*
+         * Reset completion UI only.
+         * We intentionally do NOT erase a valid
+         * receiver session here unless newReceive
+         * is clicked.
+         */
+
         startQRScanning();
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "Camera error:",
+            error
+        );
+
+        setStatusDanger();
+
+        setStatus(
+            "Camera unavailable"
+        );
 
         alert(
             "Camera permission was denied or unavailable."
@@ -1040,6 +1474,12 @@ function stopCamera() {
 
     state.scanning = false;
 
+    clearTimeout(
+        state.scanTimer
+    );
+
+    state.scanTimer = null;
+
     if (state.cameraStream) {
 
         state.cameraStream
@@ -1052,7 +1492,8 @@ function stopCamera() {
         state.cameraStream = null;
     }
 
-    cameraVideo.srcObject = null;
+    cameraVideo.srcObject =
+        null;
 
     startCameraButton.textContent =
         "Start Camera";
@@ -1069,118 +1510,139 @@ function stopCamera() {
    QR SCANNING
 ========================================================= */
 
-async function startQRScanning() {
+function startQRScanning() {
 
-    /*
-     * Browser BarcodeDetector is the cleanest
-     * native approach when available.
-     */
-
-    if (
-        "BarcodeDetector"
-        in window
-    ) {
-
-        try {
-
-            const supported =
-                await BarcodeDetector.getSupportedFormats();
-
-            if (
-                supported.includes("qr_code")
-            ) {
-
-                scanUsingBarcodeDetector();
-
-                return;
-            }
-
-        } catch (error) {
-
-            console.warn(
-                "BarcodeDetector unavailable",
-                error
-            );
-        }
+    if (!state.scanning) {
+        return;
     }
 
-    /*
-     * Fallback message.
-     *
-     * A production version should bundle a
-     * JavaScript QR decoder such as jsQR locally.
-     */
+    if (
+        cameraVideo.readyState < 2
+    ) {
 
-    cameraMessage.textContent =
-        "QR scanning is not supported by this browser.";
+        state.scanTimer =
+            setTimeout(
+                startQRScanning,
+                150
+            );
 
-    receiverState.textContent =
-        "Unsupported";
+        return;
+    }
 
-    setStatus(
-        "QR scanner unavailable"
-    );
-}
+    try {
 
+        const width =
+            cameraVideo.videoWidth;
 
-/* =========================================================
-   BARCODE DETECTOR
-========================================================= */
-
-async function scanUsingBarcodeDetector() {
-
-    const detector =
-        new BarcodeDetector({
-            formats: ["qr_code"]
-        });
-
-    async function scan() {
-
-        if (!state.scanning)
-            return;
+        const height =
+            cameraVideo.videoHeight;
 
         if (
-            cameraVideo.readyState
-            >= 2
+            !width ||
+            !height
         ) {
 
-            try {
-
-                const codes =
-                    await detector.detect(
-                        cameraVideo
-                    );
-
-                if (
-                    codes.length > 0
-                ) {
-
-                    const value =
-                        codes[0].rawValue;
-
-                    if (value) {
-
-                        processQRPayload(
-                            value
-                        );
-                    }
-                }
-
-            } catch (error) {
-
-                console.warn(
-                    "QR detection error",
-                    error
+            state.scanTimer =
+                setTimeout(
+                    startQRScanning,
+                    150
                 );
-            }
+
+            return;
         }
 
-        requestAnimationFrame(
-            scan
+        /*
+         * Match canvas to camera.
+         */
+
+        if (
+            cameraCanvas.width !== width ||
+            cameraCanvas.height !== height
+        ) {
+
+            cameraCanvas.width =
+                width;
+
+            cameraCanvas.height =
+                height;
+        }
+
+        const context =
+            cameraCanvas.getContext(
+                "2d",
+                {
+                    willReadFrequently: true
+                }
+            );
+
+        /*
+         * Draw current camera frame.
+         */
+
+        context.drawImage(
+            cameraVideo,
+            0,
+            0,
+            width,
+            height
+        );
+
+        const imageData =
+            context.getImageData(
+                0,
+                0,
+                width,
+                height
+            );
+
+
+        /*
+         * Decode QR.
+         */
+
+        const code =
+            jsQR(
+                imageData.data,
+                imageData.width,
+                imageData.height,
+                {
+                    inversionAttempts:
+                        "attemptBoth"
+                }
+            );
+
+
+        if (
+            code &&
+            code.data
+        ) {
+
+            processQRPayload(
+                code.data
+            );
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "Scanner error:",
+            error
         );
     }
 
-    scan();
+
+    /*
+     * Continue scanning.
+     */
+
+    if (state.scanning) {
+
+        state.scanTimer =
+            setTimeout(
+                startQRScanning,
+                CONFIG.SCAN_INTERVAL
+            );
+    }
 }
 
 
@@ -1190,29 +1652,48 @@ async function scanUsingBarcodeDetector() {
 
 function processQRPayload(raw) {
 
+    if (
+        typeof raw !==
+        "string"
+    ) {
+        return;
+    }
+
+    state.scannedFrames++;
+
+    updateReceiverStats();
+
+
+    /*
+     * Prevent processing the exact same QR
+     * multiple times while the camera is still
+     * looking at it.
+     *
+     * IMPORTANT:
+     *
+     * We still allow the same chunk again
+     * in a later cycle.
+     */
+
     const now =
         Date.now();
 
-    /*
-     * Ignore exactly repeated QR
-     * for a short period.
-     */
-
     if (
-        raw === state.lastPacket
-        &&
-        now - state.lastPacketTime
-            < CONFIG.DUPLICATE_TIMEOUT
+        raw === state.lastRawPacket &&
+        now -
+            state.lastRawPacketTime <
+            350
     ) {
 
         return;
     }
 
-    state.lastPacket =
+    state.lastRawPacket =
         raw;
 
-    state.lastPacketTime =
+    state.lastRawPacketTime =
         now;
+
 
     let packet;
 
@@ -1226,42 +1707,93 @@ function processQRPayload(raw) {
         return;
     }
 
+
+    /*
+     * Validate application.
+     */
+
     if (
-        packet.app
-        !== "YUKTI_QRSTREAM"
+        packet.app !==
+        CONFIG.APP
     ) {
+        return;
+    }
+
+
+    if (
+        packet.version !==
+        CONFIG.VERSION
+    ) {
+        return;
+    }
+
+
+    /*
+     * Route packet.
+     */
+
+    if (
+        packet.type ===
+        "meta"
+    ) {
+
+        receiveMeta(
+            packet
+        );
 
         return;
     }
 
-    receivePacket(
-        packet
-    );
+
+    if (
+        packet.type ===
+        "chunk"
+    ) {
+
+        receiveChunk(
+            packet
+        );
+
+        return;
+    }
 }
 
 
 /* =========================================================
-   RECEIVE PACKET
+   RECEIVE METADATA
 ========================================================= */
 
-function receivePacket(packet) {
-
-    if (
-        !Number.isInteger(
-            packet.index
-        )
-    ) {
-
-        return;
-    }
+function receiveMeta(packet) {
 
     /*
-     * New transfer
+     * Validate required fields.
      */
 
     if (
-        state.receiverSession === null
+        !packet.session ||
+        !packet.filename ||
+        !Number.isInteger(packet.total) ||
+        packet.total < 1
     ) {
+        return;
+    }
+
+
+    /*
+     * -------------------------------------------------------
+     * NEW SESSION
+     * -------------------------------------------------------
+     */
+
+    if (
+        state.receiverSession !==
+        packet.session
+    ) {
+
+        /*
+         * If an old transfer was active,
+         * start a completely new receiver.
+         */
 
         state.receiverSession =
             packet.session;
@@ -1272,58 +1804,187 @@ function receivePacket(packet) {
                 packet.filename,
 
             mime:
-                packet.mime,
+                packet.mime ||
+                "application/octet-stream",
 
             size:
-                packet.size,
+                Number(packet.size) || 0,
+
+            total:
+                packet.total,
+
+            chunkSize:
+                packet.chunkSize ||
+                CONFIG.CHUNK_SIZE,
 
             hash:
                 packet.hash,
 
-            total:
-                packet.total
-
+            cycle:
+                packet.cycle || 1
         };
+
+
+        /*
+         * Clear previous chunks.
+         */
 
         state.receiverPackets =
             new Map();
 
-        receiverFileName.textContent =
-            packet.filename;
+        state.receivedBytes = 0;
 
-        receiveStatus.classList.remove(
-            "hidden"
-        );
+        state.receiverCompleted =
+            false;
+
+        state.receiverCycles =
+            new Set();
+
+        /*
+         * Hide previous completion.
+         */
 
         completionBox.classList.add(
             "hidden"
         );
 
+
+        /*
+         * Show receiver state.
+         */
+
+        receiveStatus.classList.remove(
+            "hidden"
+        );
+
+
+        receiverFileName.textContent =
+            packet.filename;
+
+        receiverSessionText.textContent =
+            `SESSION ${packet.session}`;
+
+
         receiverState.textContent =
-            "Receiving";
+            "Synchronized";
+
+        receiverFrameText.textContent =
+            `0 / ${packet.total}`;
+
+        receiverProgress.style.width =
+            "0%";
+
+        receiverBytes.textContent =
+            "0 KB";
+
+        missingFrames.textContent =
+            packet.total;
 
         setStatus(
-            "Receiving file"
+            "Receiver synchronized"
         );
+
+        setStatusOnline();
     }
 
 
     /*
-     * Ignore packets from another
-     * transfer session.
+     * Existing session.
      */
 
     if (
-        packet.session
-        !== state.receiverSession
+        packet.session ===
+        state.receiverSession
     ) {
 
+        if (
+            Number.isInteger(
+                packet.cycle
+            )
+        ) {
+
+            state.receiverCycles.add(
+                packet.cycle
+            );
+        }
+
+        updateReceiverStats();
+    }
+}
+
+
+/* =========================================================
+   RECEIVE CHUNK
+========================================================= */
+
+function receiveChunk(packet) {
+
+    /*
+     * We cannot accept chunks before metadata.
+     */
+
+    if (
+        !state.receiverMeta ||
+        !state.receiverSession
+    ) {
         return;
     }
 
 
     /*
-     * Ignore duplicate frame.
+     * Wrong session.
+     */
+
+    if (
+        packet.session !==
+        state.receiverSession
+    ) {
+        return;
+    }
+
+
+    /*
+     * Validate index.
+     */
+
+    if (
+        !Number.isInteger(
+            packet.index
+        )
+    ) {
+        return;
+    }
+
+
+    if (
+        packet.index < 0 ||
+        packet.index >=
+            state.receiverMeta.total
+    ) {
+        return;
+    }
+
+
+    /*
+     * Track cycle.
+     */
+
+    if (
+        Number.isInteger(
+            packet.cycle
+        )
+    ) {
+
+        state.receiverCycles.add(
+            packet.cycle
+        );
+    }
+
+
+    /*
+     * -------------------------------------------------------
+     * DUPLICATE DETECTION
+     * -------------------------------------------------------
      */
 
     if (
@@ -1332,252 +1993,437 @@ function receivePacket(packet) {
         )
     ) {
 
+        state.duplicateFrames++;
+
+        updateReceiverStats();
+
         return;
     }
 
 
     /*
-     * Decode Base64.
+     * Decode chunk.
      */
+
+    let bytes;
 
     try {
 
-        const binary =
-            atob(packet.data);
-
-        const bytes =
-            new Uint8Array(
-                binary.length
+        bytes =
+            base64ToUint8Array(
+                packet.data
             );
 
-        for (
-            let i = 0;
-            i < binary.length;
-            i++
-        ) {
-
-            bytes[i] =
-                binary.charCodeAt(i);
-        }
-
-        state.receiverPackets.set(
-            packet.index,
-            bytes
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Packet decoding failed",
-            error
-        );
+    } catch {
 
         return;
     }
 
 
-    updateReceiverUI();
+    /*
+     * Store by INDEX.
+     *
+     * This is the important synchronization mechanism.
+     *
+     * Example:
+     *
+     * Received:
+     * 0,1,2,4,5,8
+     *
+     * Map stores exactly those indexes.
+     *
+     * When 3,6,7 arrive later, the Map becomes complete.
+     */
+
+    state.receiverPackets.set(
+        packet.index,
+        bytes
+    );
+
+
+    state.receivedBytes +=
+        bytes.byteLength;
+
+
+    updateReceiverProgress();
 
 
     /*
-     * Check whether every frame
-     * has arrived.
+     * Check completion.
      */
 
     if (
-        state.receiverPackets.size
-        === state.receiverMeta.total
+        state.receiverPackets.size ===
+        state.receiverMeta.total
     ) {
 
-        reconstructFile();
+        completeReceive();
     }
 }
 
 
 /* =========================================================
-   RECEIVER UI
+   RECEIVER PROGRESS
 ========================================================= */
 
-function updateReceiverUI() {
+function updateReceiverProgress() {
 
-    const received =
-        state.receiverPackets.size;
+    if (!state.receiverMeta) {
+        return;
+    }
 
     const total =
         state.receiverMeta.total;
 
-    const percent =
+    const received =
+        state.receiverPackets.size;
+
+    const progress =
         (received / total) * 100;
+
 
     receiverFrameText.textContent =
         `${received} / ${total}`;
 
+
     receiverProgress.style.width =
-        `${percent}%`;
+        `${progress}%`;
 
-    let bytes = 0;
-
-    for (
-        const chunk
-        of state.receiverPackets.values()
-    ) {
-
-        bytes +=
-            chunk.byteLength;
-    }
 
     receiverBytes.textContent =
-        humanSize(bytes);
+        humanSize(
+            state.receivedBytes
+        );
 
-
-    let missing = 0;
-
-    for (
-        let i = 0;
-        i < total;
-        i++
-    ) {
-
-        if (
-            !state.receiverPackets.has(i)
-        ) {
-
-            missing++;
-        }
-    }
 
     missingFrames.textContent =
-        missing;
+        Math.max(
+            0,
+            total - received
+        );
+
+
+    uniqueFrames.textContent =
+        received;
 
 
     receiverState.textContent =
-        missing === 0
-            ? "Complete"
-            : "Scanning";
+        received === total
+            ? "Verifying"
+            : "Collecting";
+
+
+    /*
+     * Important:
+     *
+     * The receiver's progress is the REAL
+     * transfer progress.
+     *
+     * Sender's progress is only current-cycle
+     * position.
+     */
 }
 
 
 /* =========================================================
-   RECONSTRUCT FILE
+   RECEIVER STATS
 ========================================================= */
 
-async function reconstructFile() {
+function updateReceiverStats() {
+
+    scannedFrames.textContent =
+        state.scannedFrames;
+
+    uniqueFrames.textContent =
+        state.receiverPackets.size;
+
+    duplicateFrames.textContent =
+        state.duplicateFrames;
+
+    receiverCycles.textContent =
+        state.receiverCycles.size;
+
+    if (
+        state.receiverMeta
+    ) {
+
+        missingFrames.textContent =
+            Math.max(
+                0,
+                state.receiverMeta.total -
+                state.receiverPackets.size
+            );
+    }
+}
+
+
+/* =========================================================
+   COMPLETE RECEIVE
+========================================================= */
+
+async function completeReceive() {
+
+    /*
+     * Prevent duplicate completion attempts.
+     */
+
+    if (
+        state.receiverCompleted
+    ) {
+        return;
+    }
+
+    state.receiverCompleted =
+        true;
 
     receiverState.textContent =
         "Verifying";
 
     setStatus(
-        "Verifying file..."
+        "Verifying received file..."
     );
 
 
-    const chunks = [];
+    try {
 
-    for (
-        let i = 0;
-        i < state.receiverMeta.total;
-        i++
-    ) {
+        const total =
+            state.receiverMeta.total;
 
-        const chunk =
-            state.receiverPackets.get(i);
+        /*
+         * Build ordered chunks.
+         */
 
-        if (!chunk) {
+        const orderedChunks = [];
+
+        let totalBytes = 0;
+
+
+        for (
+            let i = 0;
+            i < total;
+            i++
+        ) {
+
+            const chunk =
+                state.receiverPackets.get(
+                    i
+                );
+
+
+            /*
+             * This should never happen because
+             * Map.size === total, but keep the
+             * safety check.
+             */
+
+            if (!chunk) {
+
+                state.receiverCompleted =
+                    false;
+
+                receiverState.textContent =
+                    "Recovering";
+
+                return;
+            }
+
+
+            orderedChunks.push(
+                chunk
+            );
+
+            totalBytes +=
+                chunk.byteLength;
+        }
+
+
+        /*
+         * Combine chunks.
+         */
+
+        const completeBuffer =
+            new Uint8Array(
+                totalBytes
+            );
+
+
+        let offset = 0;
+
+
+        for (
+            const chunk
+            of orderedChunks
+        ) {
+
+            completeBuffer.set(
+                chunk,
+                offset
+            );
+
+            offset +=
+                chunk.byteLength;
+        }
+
+
+        /*
+         * SHA-256 verification.
+         */
+
+        const actualHash =
+            await calculateSHA256(
+                completeBuffer.buffer
+            );
+
+
+        /*
+         * Hash mismatch means we DO NOT
+         * declare success.
+         */
+
+        if (
+            actualHash.toLowerCase() !==
+            String(
+                state.receiverMeta.hash
+            ).toLowerCase()
+        ) {
+
+            state.receiverCompleted =
+                false;
 
             receiverState.textContent =
-                "Missing frame";
+                "Recovering";
+
+            setStatusDanger();
+
+            setStatus(
+                "Integrity mismatch — continuing recovery"
+            );
+
+            /*
+             * Keep scanning.
+             *
+             * The sender is still repeating.
+             */
 
             return;
         }
 
-        chunks.push(chunk);
-    }
+
+        /*
+         * ---------------------------------------------------
+         * SUCCESS
+         * ---------------------------------------------------
+         */
+
+        const blob =
+            new Blob(
+                [completeBuffer],
+                {
+                    type:
+                        state.receiverMeta.mime
+                }
+            );
 
 
-    /*
-     * Combine chunks.
-     */
+        /*
+         * Revoke old download URL.
+         */
 
-    const blob =
-        new Blob(
-            chunks,
-            {
-                type:
-                    state.receiverMeta.mime
-            }
+        if (
+            state.downloadUrl
+        ) {
+
+            URL.revokeObjectURL(
+                state.downloadUrl
+            );
+        }
+
+
+        state.downloadUrl =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        /*
+         * Download link.
+         */
+
+        downloadButton.href =
+            state.downloadUrl;
+
+        downloadButton.download =
+            state.receiverMeta.filename;
+
+
+        /*
+         * Completion UI.
+         */
+
+        completionText.textContent =
+            `${state.receiverMeta.filename} · ${humanSize(totalBytes)} · ${state.receiverPackets.size}/${total} frames verified.`;
+
+
+        completionBox.classList.remove(
+            "hidden"
         );
 
-
-    /*
-     * Calculate SHA-256.
-     */
-
-    const buffer =
-        await blob.arrayBuffer();
-
-    const hash =
-        await calculateSHA256(
-            buffer
-        );
-
-
-    /*
-     * Verify.
-     */
-
-    if (
-        hash
-        !== state.receiverMeta.hash
-    ) {
 
         receiverState.textContent =
-            "Verification failed";
+            "COMPLETE";
+
+
+        receiverProgress.style.width =
+            "100%";
+
+
+        receiverFrameText.textContent =
+            `${total} / ${total}`;
+
+
+        missingFrames.textContent =
+            "0";
+
+
+        setStatusSuccess();
 
         setStatus(
-            "File verification failed"
+            "Transfer complete"
         );
 
-        alert(
-            "The file was received, but SHA-256 verification failed."
+
+        /*
+         * We can stop the receiver scanner
+         * because the file is verified.
+         */
+
+        stopCamera();
+
+
+    } catch (error) {
+
+        console.error(
+            "Completion error:",
+            error
         );
 
-        return;
+        state.receiverCompleted =
+            false;
+
+        receiverState.textContent =
+            "Recovering";
+
+        setStatusDanger();
+
+        setStatus(
+            "Verification failed — recovering"
+        );
     }
-
-
-    /*
-     * Success.
-     */
-
-    receiverState.textContent =
-        "Verified";
-
-    setStatus(
-        "Transfer complete"
-    );
-
-    const url =
-        URL.createObjectURL(
-            blob
-        );
-
-    downloadButton.href =
-        url;
-
-    downloadButton.download =
-        state.receiverMeta.filename;
-
-    completionText.textContent =
-        `${state.receiverMeta.filename} • ${humanSize(blob.size)}`;
-
-    completionBox.classList.remove(
-        "hidden"
-    );
 }
 
 
 /* =========================================================
-   NEW RECEIVER
+   NEW RECEIVE
 ========================================================= */
 
 newReceiveButton.addEventListener(
@@ -1588,6 +2434,17 @@ newReceiveButton.addEventListener(
 
 function resetReceiver() {
 
+    /*
+     * Stop camera first.
+     */
+
+    stopCamera();
+
+
+    /*
+     * Clear receiver state.
+     */
+
     state.receiverSession =
         null;
 
@@ -1597,60 +2454,175 @@ function resetReceiver() {
     state.receiverPackets =
         new Map();
 
-    state.lastPacket =
-        null;
+    state.receiverCompleted =
+        false;
 
-    state.lastPacketTime =
+    state.receivedBytes =
         0;
 
-    receiveStatus.classList.add(
-        "hidden"
-    );
+    state.scannedFrames =
+        0;
+
+    state.duplicateFrames =
+        0;
+
+    state.receiverCycles =
+        new Set();
+
+    state.lastRawPacket =
+        null;
+
+    state.lastRawPacketTime =
+        0;
+
+
+    /*
+     * Revoke old download URL.
+     */
+
+    if (
+        state.downloadUrl
+    ) {
+
+        URL.revokeObjectURL(
+            state.downloadUrl
+        );
+
+        state.downloadUrl =
+            null;
+    }
+
+
+    /*
+     * Reset UI.
+     */
 
     completionBox.classList.add(
         "hidden"
     );
 
-    receiverProgress.style.width =
-        "0%";
+    receiveStatus.classList.add(
+        "hidden"
+    );
+
+    receiverFileName.textContent =
+        "Waiting for sender...";
 
     receiverFrameText.textContent =
         "0 / 0";
+
+    receiverProgress.style.width =
+        "0%";
 
     receiverBytes.textContent =
         "0 KB";
 
     missingFrames.textContent =
-        "0";
+        "—";
 
     receiverState.textContent =
-        "Scanning";
+        "Waiting";
+
+    scannedFrames.textContent =
+        "0";
+
+    uniqueFrames.textContent =
+        "0";
+
+    duplicateFrames.textContent =
+        "0";
+
+    receiverCycles.textContent =
+        "0";
+
+    receiverSessionText.textContent =
+        "Waiting for session...";
+
 
     setStatus(
         "Ready to receive"
     );
+
+    setStatusOnline();
 }
 
 
 /* =========================================================
-   CLEANUP
+   INITIALIZATION
 ========================================================= */
 
-window.addEventListener(
-    "beforeunload",
+document.addEventListener(
+    "DOMContentLoaded",
     () => {
 
-        stopCamera();
+        setStatus(
+            "Ready"
+        );
 
-        stopSending();
+        setStatusOnline();
+
+        console.log(
+            "YUKTI QRStream v2.0 initialized."
+        );
+
+        console.log(
+            "Continuous retransmission:",
+            true
+        );
+
+        console.log(
+            "Chunk size:",
+            CONFIG.CHUNK_SIZE
+        );
+
+        console.log(
+            "Frame interval:",
+            CONFIG.FRAME_INTERVAL
+        );
     }
 );
 
 
 /* =========================================================
-   INITIAL STATUS
+   PAGE VISIBILITY
 ========================================================= */
 
-setStatus(
-    "Ready"
+/*
+ * If the browser temporarily hides the page,
+ * timers can become unreliable.
+ *
+ * We don't destroy the sender state.
+ */
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+
+        if (
+            document.hidden &&
+            state.sending
+        ) {
+
+            console.log(
+                "YUKTI QRStream: page hidden."
+            );
+
+        } else if (
+            !document.hidden &&
+            state.sending &&
+            !state.paused
+        ) {
+
+            /*
+             * Make sure sender resumes its
+             * continuous loop.
+             */
+
+            clearTimeout(
+                state.timer
+            );
+
+            showNextFrame();
+        }
+    }
 );
